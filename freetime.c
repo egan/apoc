@@ -10,6 +10,7 @@
 
 #define MAXL 6
 #define REVPULSES 8192
+#define UDCSIZE 65536
 #define DIALTICKS 40
 #define SAMPLINGTIME 10	// ms
 #define FEEDRATE 150	// RPM
@@ -50,17 +51,15 @@ const char *clrstring;
 /* Initial dial position MSD. */
 unsigned char initp;
 /* Reference encoder position. */
-unsigned long encoderref;
+unsigned int encoderref;
 /* Keep track of HMI state inside of a mode. */
 unsigned char submode;
 /* Whether to wait at OCS for user acknowledgement. */
 unsigned char wait;
 /* MSD Ready status: 0 = not ready. */
-unsigned char ready;
+//unsigned char ready;
 /* Operational mode, error flag, first run flag. */
 unsigned char OMD, ERR1, FFRA;
-/* Timer values. */
-unsigned char MD, MH, MM, MS;
 
 /* Combination values. */
 unsigned char Number1, Number2, Number3;
@@ -109,23 +108,28 @@ void checkInput(unsigned char input, unsigned char *setting) {
 }
 
 /* Function to return current encoder position. */
-unsigned long getABSposition() {
+unsigned int getABSposition() {
 	__data __at (0x60) unsigned long position;
 	return position;
 }
 
 /* Function to return current dial position. */
-unsigned int currentDial() {
-	unsigned long absPosition = getABSposition();
-	unsigned long relPosition;
-	unsigned long relTicks;
-	unsigned int dial;
+unsigned char currentDial() {
+	unsigned int absPosition = getABSposition();
+	unsigned int relPosition;
+	unsigned int relTicks;
+	unsigned char dial;
 	if (absPosition >= encoderref) {
+		/* Simple relative distance from ref. */
 		relPosition = absPosition - encoderref;
 	} else if (absPosition < encoderref) {
-		relPosition = (encoderResolution*8 - 1)-(encoderref - absPosition);
+		/* Dial complement of distance from ref. */
+		relPosition = UDCSIZE-(encoderref - absPosition);
 	}
-	relTicks = (float)(relPosition*dialPositions)/(float)encoderResolution;
+	/* XXX: Do we need casts to float here?
+	 * I don't think so because we do the multiplication first. */
+	relTicks = (relPosition*dialPositions)/encoderResolution;
+	/* Take the modulus to remove full rotations. */
 	dial = (initp + relTicks) % dialPositions;
 	return dial;
 }
@@ -150,7 +154,7 @@ void INZfunction() {
 	ERR1 = 0;
 	/* Set First Run Flag, MSD defaults. */
 	FFRA = 1;
-	ready = 0;
+	//ready = 0;
 	wait = 0;
 	initp = 0;
 	/* Initialize encoder reference. */
@@ -211,8 +215,6 @@ void printACSidle() {
 			printf("%s%s\n", clrstring, clrstring);
 			break;
 		case 1:
-			setCur(0,10);
-			printf("Enter 1st Dial Value: ");
 			break;
 		case 2:
 			setCur(0,9);
@@ -220,8 +222,6 @@ void printACSidle() {
 			printf("Press E to Change 2nd Number%s\n", clrstring);
 			break;
 		case 3:
-			setCur(0,11);
-			printf("Enter 2nd Dial Value: ");
 			break;
 		case 4:
 			setCur(0,10);
@@ -229,8 +229,6 @@ void printACSidle() {
 			printf("Press E to Change 3rd Number%s\n", clrstring);
 			break;
 		case 5:
-			setCur(0,12);
-			printf("Enter 3rd Dial Value: ");
 			break;
 		case 6:
 			setCur(0,11);
