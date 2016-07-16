@@ -60,6 +60,10 @@ unsigned char OMD, ERR1, FFRA;
 /* Timer values. */
 unsigned char MD, MH, MM, MS;
 
+/* Combination values. */
+unsigned char Number1, Number2, Number3;
+unsigned char ticks1, ticks2, ticks3;
+
 /* Servo and dial parameters. */
 unsigned int feedRate;
 unsigned int encoderResolution;
@@ -474,35 +478,35 @@ void MOSfunction() {
 	switch (submode) {
 		case 1:
 			/* 10 CCW */
-			moveServo(10, 1);
+			moveServo(10, 0);
 			break;
 		case 2:
 			/* 10 CW */
-			moveServo(10, 0);
+			moveServo(10, 1);
 			break;
 		case 3:
 			/* 5 CCW */
-			moveServo(5, 1);
+			moveServo(5, 0);
 			break;
 		case 4:
 			/* 5 CW */
-			moveServo(5, 0);
+			moveServo(5, 1);
 			break;
 		case 5:
 			/* 1 CCW */
-			moveServo(1, 1);
+			moveServo(1, 0);
 			break;
 		case 6:
 			/* 1 CW */
-			moveServo(1, 0);
+			moveServo(1, 1);
 			break;
 		case 7:
 			/* 40 CCW */
-			moveServo(40, 1);
+			moveServo(40, 0);
 			break;
 		case 8:
 			/* 40 CW */
-			moveServo(40, 0);
+			moveServo(40, 1);
 			break;
 		case 9:
 			/* Solenoid */
@@ -518,8 +522,6 @@ void MOSfunction() {
 void ACSfunction() {
 	char userinput[5];
 	unsigned char parsed;
-	unsigned char Number1, Number2, Number3;
-	unsigned char ticks1, ticks2, ticks3;
 	
 	machineMessage = "Automatic Mode Accepted";
 	
@@ -528,50 +530,50 @@ void ACSfunction() {
 		case 2: 
 			if(submode == 0) {
 				/* Wait for user to press enter to change 1st */
-			} else if(submode == 1) {
+			} else if (submode == 1) {
 				/* Receive 1st user input */
 				gets(userinput);
 				parsed = atoi(userinput);
 				checkInput(parsed, &Number1);
-			} else if(submode == 2) {
+			} else if (submode == 2) {
 				/* Wait for user to press enter to change 2nd */
-			} else if(submode == 3) {
+			} else if (submode == 3) {
 				/* Receive 2nd user input */
 				gets(userinput);
 				parsed = atoi(userinput);
 				checkInput(parsed, &Number2);
-			} else if(submode == 4) {
+			} else if (submode == 4) {
 				/* Wait for user to press enter to change 3rd */
-			} else if(submode == 5) {
+			} else if (submode == 5) {
 				/* Receive 3rd user input */
 				gets(userinput);
 				parsed = atoi(userinput);
 				checkInput(parsed, &Number3);
-			} else if(submode == 6) {
+			} else if (submode == 6) {
 				/* Wait for user to press enter, then Start RTS */
 				/* Calculations Here? */
 				/* Determine ticks to move to get to 1st Number */
-				if(initP > Number1)
+				if (initp > Number1)
 				{
-					ticks1 = 80+(40-initP)+Number1;
-				} else if( initP < Number1) {
-					ticks1 = 80+(Number1-initP);
+					ticks1 = 80+(40-initp)+Number1;
+				} else if (initp < Number1) {
+					ticks1 = 80+(Number1-initp);
 				}
 				/* Determine ticks to move to get to 2nd Number */
-				if(Number1 > Number2)
+				if (Number1 > Number2)
 				{
-					ticks2 = 40+(40-Number1)+Number2;
-				} else if( Number1 < Number2) {
-					ticks2 = 40+(Number2-Number1);
+					ticks2 = Number1-Number2;
+				} else if ( Number1 < Number2) {
+					ticks2 = 40-Number1;
 				}
 				/* Determine ticks to move to get to 3rd Number */
-				if(Number3 > Number2)
+				if (Number3 > Number2)
 				{
-					ticks3 = (40-Number2)+Number3;
-				} else if(Number3 < Number2) {
-					ticks3 = (Number3-Number2);
+					ticks3 = Number3-Number2;
+				} else if (Number3 < Number2) {
+					ticks3 = 40-Number2;
 				}
-			} else if(submode == 7) {
+			} else if (submode == 7) {
 				/* Move to Active Mode */
 				OMD = 3;
 				submode = 7;
@@ -579,17 +581,21 @@ void ACSfunction() {
 			break;
 		/* ACS Active Mode */
 		case 3: 
-			if(submode == 0) { //Moving to 1st			
-				moveServo(ticks1,1);
-			} else if(submode == 1) { //Moving to 2nd
-				moveServo(ticks1,0);
-			} else if(submode == 2) { //Moving to 2nd
-				moveServo(ticks3,1);
+			/* XXX: Put timing clear here. */
+			if (submode == 0) {
+				/* Move to Number1. */
+				moveServo(ticks1, 1);
+			} else if (submode == 1) {
+				/* Move to Number2. */
+				moveServo(ticks1, 0);
+			} else if (submode == 2) {
+				/* Move to Number3. */
+				moveServo(ticks3, 1);
 			}
+			/* XXX: Put timing print here. */
 			break;
 		default:
 			break;
-	
 	}
 } 
 /***** END OF ACS ****************************************/
