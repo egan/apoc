@@ -34,19 +34,11 @@ void MSDfunction();
 
 
 /***** START of MESSAGE AND CONSTANTS DEFINITION *********/
-void printHeaderAndMenu(){
+void printHeader(){
 	clrPC();
 	printf("EME 154 Mechatronics\n");
-	printf("Freetime System\n");
-	printf("Egan McComb\n\n");
-	printf("****************************************\n");
-	printf("            OPERATION MENU\n");
-	printf("****************************************\n\n");
-	printf("1. Manual Operation\n");
-	printf("2. Automatic Operation\n");
-	printf("3. Machine Data Setup\n");
-	printf("4. Idle\n");
-	printf("5. Exit\n\n\n\n");
+	printf("Branding\n");
+	printf("Team Name\n\n");
 }
 /***** END of MESSAGE AND CONSTANTS DEFINITION ***********/
 
@@ -140,11 +132,11 @@ void MSSfunction(){
 /***** START OF MCS **************************************/
 void MCSfunction(){
 	if (OMD == 1) {
-		MOSfunction();
+		MSDfunction();
 	} else if (OMD == 2) {
 		ACSfunction();
 	} else if (OMD == 3) {
-		MSDfunction();
+		MOSfunction();
 	}
 }
 /***** END OF MCS ****************************************/
@@ -258,7 +250,7 @@ char *getCurrentMode() {
 /***** START OF OCS **************************************/
 void OCSfunction() {
 	if (FFRA) {
-		printHeaderAndMenu();
+		printHeader();
 		/* Clear first run flag. */
 		FFRA = 0;
 	} else {
