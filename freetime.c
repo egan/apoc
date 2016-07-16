@@ -12,7 +12,7 @@
 #define REVPULSES 8192
 #define DIALTICKS 40
 #define SAMPLINGTIME 10	// ms
-#define FEEDRATE 150	// RPM
+#define FEEDRATE 10	// RPM
 
 /***** FUNCTION PROTOTYPES *******************************/
 void OCSfunction();
@@ -50,7 +50,7 @@ const char *clrstring;
 /* Initial dial position MSD. */
 unsigned char initp;
 /* Reference encoder position. */
-unsigned long encoderref;
+int encoderref;
 /* Keep track of HMI state inside of a mode. */
 unsigned char submode;
 /* Whether to wait at OCS for user acknowledgement. */
@@ -109,24 +109,18 @@ void checkInput(unsigned char input, unsigned char *setting) {
 }
 
 /* Function to return current encoder position. */
-unsigned long getABSposition() {
+int getABSposition() {
 	__data __at (0x60) unsigned long position;
 	return position;
 }
 
 /* Function to return current dial position. */
-unsigned int currentDial() {
-	unsigned long absPosition = getABSposition();
-	unsigned long relPosition;
-	unsigned long relTicks;
-	unsigned int dial;
-	if (absPosition >= encoderref) {
-		relPosition = absPosition - encoderref;
-	} else if (absPosition < encoderref) {
-		relPosition = (encoderResolution*8 - 1)-(encoderref - absPosition);
-	}
-	relTicks = (float)(relPosition*dialPositions)/(float)encoderResolution;
-	dial = (initp + relTicks) % dialPositions;
+/* XXX: This does not currently work. */
+unsigned char currentDial() {
+	int absPosition = getABSposition();
+	int relPosition = absPosition - encoderref;
+	unsigned char dial;
+	dial = (initp + relPosition*dialPositions/encoderResolution) % dialPositions;
 	return dial;
 }
 
@@ -181,8 +175,8 @@ void INZfunction() {
 void printHeader() {
 	clrPC();
 	printf("EME 154 Mechatronics\n");
-	printf("Our Name is ONiO\n");
-	printf("Kelley Lundquist and Egan McComb\n\n");
+	printf("Branding\n");
+	printf("Team Name\n\n");
 }
 
 void printMSD() {
@@ -277,7 +271,8 @@ void printACSactive() {
 void printMOS() {
 	/* Display commands. */
 	setCur(0,8);
-	printf("Current Position: %u%s\n", currentDial(), clrstring);
+	/* XXX XXX: Does not work with currentDial()! */
+	printf("Current Position: %u%s\n", getABSposition(), clrstring);
 	printf("Q/W        10 ticks CCW/CW%s\n", clrstring);
 	printf("A/S         5 ticks CCW/CW%s\n", clrstring);
 	printf("Z/X         1 ticks CCW/CW%s\n", clrstring);
