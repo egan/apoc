@@ -12,14 +12,13 @@
 #define REVPULSES 8192
 #define DIALTICKS 40
 #define SAMPLINGTIME 10	// ms
-#define FEEDRATE = 50	// RPM
+#define FEEDRATE 50	// RPM
 
 /***** FUNCTION PROTOTYPES *******************************/
 void OCSfunction();
 void MOSfunction();
 void ACSfunction();
 void MSDfunction();
-unsigned char currentDial();
 
 /*********************************************************/
 /***** START OF FTS **************************************/
@@ -39,6 +38,119 @@ unsigned char currentDial();
   OCS - Output Control Supervisor
  ***** END OF REMARKS SECTION *****************************/
 
+/*********************************************************/
+/***** FTS PROGRAM SECTION *******************************/
+/*********************************************************/
+
+/***** START OF INZ **************************************/
+/* Machine message field. */
+char *machineMessage;
+/* Initial dial position MSD. */
+unsigned char initp;
+/* Reference encoder position. */
+int encoderref;
+/* Keep track of HMI state inside of a mode. */
+unsigned char submode;
+/* MSD Ready status: 0 = not ready. */
+unsigned char ready;
+/* Operational mode, error flag, first run flag. */
+unsigned char OMD, ERR1, FFRA;
+/* Timer values. */
+unsigned char MD, MH, MM, MS;
+
+/* Servo and dial parameters. */
+unsigned int feedRate = FEEDRATE;
+unsigned int encoderResolution = REVPULSES;
+unsigned char samplingTime = SAMPLINGTIME;
+unsigned char dialPositions = DIALTICKS;
+
+/* ASC servo speed. XXX: Units/desired value? */
+__data __at (0x52) unsigned int servospeed;
+/* ASC relative distance (pulses). */
+__data __at (0x56) unsigned long servopulses;
+/* ASC direction and go bit. 0th bit is go, 4th bit direction (0 = CW).
+ * Conveniently set by: motionRegister = 1 + 0x10*direction;
+ * Position achievement signaled by 1 in 1st bit.
+ * Conveniently checked by: motionRegister & 0x02;
+ */
+__data __at (0x21) unsigned char motionRegister;
+/* TIM counter: 1 tick = 10ms. */
+__data __at (0x23) unsigned char counter;
+
+/* Check user input: if valid store in &setting, otherwise throw error. */
+void checkInput(unsigned char input, unsigned char *setting) {
+	/* XXX: Other conditions? */
+	if (input > 39) {
+		/* Invalid input. */
+		machineMessage = "Error: Invalid input (outside 0--39)";
+		/* Get input again. */
+		submode--;
+	} else {
+		/* Store valid setting. */
+		*setting = input;
+	}
+}
+
+/* Function to return current encoder position. */
+int getABSposition() {
+	__data __at (0x60) unsigned long position;
+	return position;
+}
+
+/* Function to return current dial position. */
+unsigned char currentDial() {
+	int absPosition = getABSposition();
+	int relPosition = absPosition - encoderref;
+	unsigned char dial;
+	dial = (initp + relPosition*dialPositions/encoderResolution) % dialPositions;
+	return dial;
+}
+
+/* Convert dial ticks into encoder pulses. */
+unsigned int ticks2pulses(unsigned char ticks) {
+	unsigned int pulses;
+	pulses = (float)ticks*(float)(encoderResolution/dialPositions);
+	return pulses;
+}
+
+/* Move the servo a certain number of ticks in direction. */
+void moveServo(unsigned char ticks, char direction) {
+	servopulses = ticks2pulses(ticks);
+	motionRegister = 0x01+0x10*direction;
+	/* Wait until in position before continuing. */
+	while (!(motionRegister & 0x02));
+}
+
+void INZfunction() {
+	/* Print output to the MPS console. */
+	printMode = 0;
+	/* Operation Mode is Idle, default submode */
+	OMD = 0;
+	submode = 0;
+	machineMessage = "Ready";
+	/* Level 1 error flag for the system. */
+	ERR1 = 0;
+	/* Set First Run Flag, MSD defaults. */
+	FFRA = 1;
+	ready = 0;
+	initp = 0;
+	/* Initialize encoder reference. */
+	clrUDCounter();
+	encoderref = getABSposition();
+
+	/* Set desired servo speed. */
+	motionRegister = 0x00;
+	servospeed = (feedRate*samplingTime*(float)encoderResolution)/60000+0.5;
+
+	/* Solenoid port. */
+	P1 = 0x00;
+
+	/* Run the ACS RTS. */
+	__asm
+		lcall 0x9F00;
+	__endasm;
+}
+/***** END OF INZ ****************************************/
 
 /***** START of MESSAGE AND CONSTANTS DEFINITION *********/
 /* Clear one line. */
@@ -170,112 +282,6 @@ void printMenu() {
 }
 /***** END of MESSAGE AND CONSTANTS DEFINITION ***********/
 
-/*********************************************************/
-/***** FTS PROGRAM SECTION *******************************/
-/*********************************************************/
-
-/***** START OF INZ **************************************/
-/* Machine message field. */
-char *machineMessage;
-/* Initial dial position MSD. */
-unsigned char initp;
-/* Reference encoder position. */
-int encoderref;
-/* Keep track of HMI state inside of a mode. */
-unsigned char submode;
-/* MSD Ready status: 0 = not ready. */
-unsigned char ready;
-/* Operational mode, error flag, first run flag. */
-unsigned char OMD, ERR1, FFRA;
-/* Timer values. */
-unsigned char MD, MH, MM, MS;
-
-/* ASC servo speed. XXX: Units/desired value? */
-__data __at (0x52) unsigned int servospeed;
-/* ASC relative distance (pulses). */
-__data __at (0x56) unsigned long servopulses;
-/* ASC direction and go bit. 0th bit is go, 1st bit direction (0 = CW).
- * Conveniently set by: motionRegister = 1 + 0x10*direction;
- * Position achievement signaled by 1 in 1st bit after go signal.
- * Conveniently checked by: motionRegister & 0x10;
- */
-__data __at (0x21) unsigned char motionRegister;
-
-/* Check user input: if valid store in &setting, otherwise throw error. */
-void checkInput(unsigned char input, unsigned char *setting) {
-	/* XXX: Other conditions? */
-	if (input > 39) {
-		/* Invalid input. */
-		machineMessage = "Error: Invalid input (outside 0--39)";
-		/* Get input again. */
-		submode--;
-	} else {
-		/* Store valid setting. */
-		*setting = input;
-	}
-}
-
-/* Function to return current encoder position. */
-int getABSposition() {
-	__data __at (0x60) unsigned long position;
-	return position;
-}
-
-/* Function to return current dial position. */
-unsigned char currentDial() {
-	int absPosition = getABSposition();
-	int relPosition = absPosition - encoderref;
-	unsigned char dial;
-	dial = (initp + relPosition*DIALTICKS/REVPULSES) % DIALTICKS;
-	return dial;
-}
-
-/* Convert dial ticks into encoder pulses. */
-unsigned int ticks2pulses(unsigned char ticks) {
-	unsigned int pulses;
-	pulses = ticks*REVPULSES/DIALTICKS;
-	return pulses;
-}
-
-/* Move the servo a certain number of ticks in direction. */
-void moveServo(unsigned char ticks, char direction) {
-	servopulses = ticks2pulses(ticks);
-	motionRegister = 0x01+0x10*direction;
-}
-
-void INZfunction() {
-	/* Print output to the MPS console. */
-	printMode = 0;
-	/* Operation Mode is Idle, default submode */
-	OMD = 0;
-	submode = 0;
-	machineMessage = "Ready";
-	/* Level 1 error flag for the system. */
-	ERR1 = 0;
-	/* Set First Run Flag, MSD defaults. */
-	FFRA = 1;
-	ready = 0;
-	initp = 0;
-	/* Initialize the time variables. */
-	MD = MH = MM = MS = 0;
-	clrUDCounter();
-	/* Initialize encoder reference. */
-	encoderref = getABSposition();
-
-	/* Set desired servo speed. */
-	motionRegister = 0x00;
-	servospeed = (FEEDRATE*SAMPLINGTIME*(float)REVPULSES)/60000+0.5;
-
-	/* Solenoid port. */
-	P1 = 0x00;
-
-	/* Run the ACS RTS. */
-	__asm
-		lcall 0x9F00;
-	__endasm;
-}
-/***** END OF INZ ****************************************/
-
 /***** START OF DIG **************************************/
 int diagnostics() {
 	if (ERR1) {
@@ -291,6 +297,7 @@ int diagnostics() {
 /***** ERH ***********************************************/
 void ERHfunction() {
 	/* Take actions to treat errors here. */
+	return;
 }
 /***** END OF ERH ****************************************/
 
@@ -502,34 +509,13 @@ void MOSfunction() {
 /***** START OF ACS **************************************/
 void ACSfunction() {
 	machineMessage = "Automatic Mode Accepted";
-
-	/* Count time properly. */
-	if (MH > 23) {
-		MD++;
-		MH = 0;
-	}
-	if (MM > 59) {
-		MH++;
-		MM = 0;
-	}
-	if (MS > 59) {
-		MM++;
-		MS = 0;
-	}
-	/* 0xFF is the initial. value and 50*20ms is 1s. */
-	if (counter < (0xFF-50)) {
-		/* Prevent counter overflow, count time instead. */
-		MS++;
-		counter = 0xFF;
-	}
 }
 /***** END OF ACS ****************************************/
 
 
 /***** START OF MSD **************************************/
 void MSDfunction() {
-	/* XXX: Is this dangerous? */
-	char *userinput;
+	char userinput[5];
 	unsigned char parsed;
 
 	machineMessage = "Setup Mode Accepted";
