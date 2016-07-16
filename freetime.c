@@ -116,8 +116,8 @@ unsigned int getABSposition() {
 /* Function to return current dial position. */
 unsigned char currentDial() {
 	unsigned int absPosition = getABSposition();
-	unsigned int relPosition;
-	unsigned int relTicks;
+	unsigned long relPosition;
+	unsigned long relTicks;
 	unsigned char dial;
 	if (absPosition >= encoderref) {
 		/* Simple relative distance from ref. */
