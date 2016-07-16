@@ -51,6 +51,8 @@ unsigned char initp;
 int encoderref;
 /* Keep track of HMI state inside of a mode. */
 unsigned char submode;
+/* Whether to wait at OCS for user acknowledgement. */
+unsigned char wait;
 /* MSD Ready status: 0 = not ready. */
 unsigned char ready;
 /* Operational mode, error flag, first run flag. */
@@ -59,15 +61,15 @@ unsigned char OMD, ERR1, FFRA;
 unsigned char MD, MH, MM, MS;
 
 /* Servo and dial parameters. */
-unsigned int feedRate = FEEDRATE;
-unsigned int encoderResolution = REVPULSES;
-unsigned char samplingTime = SAMPLINGTIME;
-unsigned char dialPositions = DIALTICKS;
+unsigned int feedRate;
+unsigned int encoderResolution;
+unsigned char samplingTime;
+unsigned char dialPositions;
 
 /* ASC servo speed. XXX: Units/desired value? */
-__data __at (0x52) unsigned int servospeed;
+__data __at (0x52) unsigned int speed;
 /* ASC relative distance (pulses). */
-__data __at (0x56) unsigned long servopulses;
+__data __at (0x56) unsigned long distance;
 /* ASC direction and go bit. 0th bit is go, 4th bit direction (0 = CW).
  * Conveniently set by: motionRegister = 1 + 0x10*direction;
  * Position achievement signaled by 1 in 1st bit.
@@ -83,11 +85,15 @@ void checkInput(unsigned char input, unsigned char *setting) {
 	if (input > 39) {
 		/* Invalid input. */
 		machineMessage = "Error: Invalid input (outside 0--39)";
+		wait = 1;
 		/* Get input again. */
 		submode--;
 	} else {
 		/* Store valid setting. */
 		*setting = input;
+		if (OMD == 1) {
+			submode = 0;
+		}
 	}
 }
 
@@ -98,6 +104,7 @@ int getABSposition() {
 }
 
 /* Function to return current dial position. */
+/* XXX: This does not currently work. */
 unsigned char currentDial() {
 	int absPosition = getABSposition();
 	int relPosition = absPosition - encoderref;
@@ -106,16 +113,9 @@ unsigned char currentDial() {
 	return dial;
 }
 
-/* Convert dial ticks into encoder pulses. */
-unsigned int ticks2pulses(unsigned char ticks) {
-	unsigned int pulses;
-	pulses = (float)ticks*(float)(encoderResolution/dialPositions);
-	return pulses;
-}
-
 /* Move the servo a certain number of ticks in direction. */
-void moveServo(unsigned char ticks, char direction) {
-	servopulses = ticks2pulses(ticks);
+void moveServo(char ticks, char direction) {
+	distance = (float)ticks*(float)(encoderResolution/dialPositions);
 	motionRegister = 0x01+0x10*direction;
 	/* Wait until in position before continuing. */
 	while (!(motionRegister & 0x02));
@@ -127,20 +127,27 @@ void INZfunction() {
 	/* Operation Mode is Idle, default submode */
 	OMD = 0;
 	submode = 0;
-	machineMessage = "Ready";
+	machineMessage = "System Ready";
 	/* Level 1 error flag for the system. */
 	ERR1 = 0;
 	/* Set First Run Flag, MSD defaults. */
 	FFRA = 1;
 	ready = 0;
+	wait = 0;
 	initp = 0;
 	/* Initialize encoder reference. */
 	clrUDCounter();
 	encoderref = getABSposition();
 
+	/* Servo/dial parameters. */
+	feedRate = FEEDRATE;
+	encoderResolution = REVPULSES;
+	dialPositions = DIALTICKS;
+	samplingTime = SAMPLINGTIME;
+
 	/* Set desired servo speed. */
 	motionRegister = 0x00;
-	servospeed = (feedRate*samplingTime*(float)encoderResolution)/60000+0.5;
+	speed = (feedRate*samplingTime*(float)encoderResolution)/60000+0.5;
 
 	/* Solenoid port. */
 	P1 = 0x00;
@@ -155,7 +162,7 @@ void INZfunction() {
 /***** START of MESSAGE AND CONSTANTS DEFINITION *********/
 /* Clear one line. */
 void clrLine() {
-	printf("\t\t\t\t\t\t\t\t");
+	printf("                                        \r");
 }
 
 /* Clear n lines. */
@@ -175,27 +182,28 @@ void printHeader() {
 	printf("Team Name\n\n");
 }
 
-void printMSD(unsigned char submode) {
+void printMSD() {
 	setCur(0,8);
 	/* Update current initial position. */
-	printf("Current Initial Position: %u\t\t\n", initp);
+	printf("Current Initial Position: %u\t\t\t\n", initp);
 	if (submode == 0) {
 		/* Display mode. */
-		printf("Press Enter to Change\n");
+		printf("Press e to Change\t\t\t\n");
 	} else {
 		/* Edit mode. */
 		clrLine();
+		setCur(0,9);
 		printf("Enter Initial Value: ");
 	}
 }
 
-void printACSidle(unsigned char submode) {
+void printACSidle() {
 	setCur(0,8);
 	/* Sequence of combination number inputs. */
 	switch (submode) {
 		case 0:
-			printf("Press R to Reset Fields\n");
-			printf("Press Enter to Change 1st Number\n");
+			printf("Press R to Reset Fields\t\t\t\n");
+			printf("Press Enter to Change 1st Number\t\t\t\n");
 			break;
 		case 1:
 			setCur(0,9);
@@ -203,10 +211,8 @@ void printACSidle(unsigned char submode) {
 			printf("Enter 1st Dial Value: ");
 			break;
 		case 2:
-			clrLine();
-			printf("1st Dial: %u\n", Number1);
 			setCur(0,10);
-			printf("Press Enter to Change 2nd Number\n");
+			printf("Press Enter to Change 2nd Number\t\t\t\n");
 			break;
 		case 3:
 			setCur(0,10);
@@ -214,10 +220,8 @@ void printACSidle(unsigned char submode) {
 			printf("Enter 2nd Dial Value: ");
 			break;
 		case 4:
-			clrLine();
-			printf("2nd Dial: %u\n", Number2);
 			setCur(0,11);
-			printf("Press Enter to Change 3rd Number\n");
+			printf("Press Enter to Change 3rd Number\t\t\t\n");
 			break;
 		case 5:
 			setCur(0,11);
@@ -225,27 +229,23 @@ void printACSidle(unsigned char submode) {
 			printf("Enter 3rd Dial Value: ");
 			break;
 		case 6:
-			clrLine();
-			printf("3rd Dial: %u\n", Number3);
 			setCur(0,12);
-			printf("Press Enter to Start RTS\n");
-			break;
-		case 7:	
+			printf("Press Enter to Start RTS\t\t\t\n");
 			break;
 		default:
 			break;
 	}
 }
 
-void printACSactive(unsigned char submode) {
+void printACSactive() {
 	setCur(0,8);
 	printf("Elapsed time: XXX\n");
 	/* Update completion status. */
 	switch (submode) {
 		case 0:
-			printf("1st Dial: %u\n", Number1);
-			printf("2nd Dial: %u\n", Number2);
-			printf("3rd Dial: %u\n", Number3);
+			printf("1st Dial: XXX\n");
+			printf("2nd Dial: XXX\n");
+			printf("3rd Dial: XXX\n");
 			break;
 		case 1:
 			setCur(13,9);
@@ -265,28 +265,24 @@ void printACSactive(unsigned char submode) {
 }
 
 void printMOS() {
-	if (submode == 0) {
-		/* Display commands. */
-		setCur(0,8);
-		printf("Current Position: %u\t\t\n", currentDial());
-		printf("Q/W        10 ticks CCW/CW\n");
-		printf("A/S         5 ticks CCW/CW\n");
-		printf("Z/X         1 ticks CCW/CW\n");
-		printf("Bksp/Enter 40 ticks CCW/CW\n");
-		printf("Spacebar      fire solenoid\n");
-	} else {
-		/* Update position. */
-		setCur(0,8);
-		printf("Current Position: %u\t\t\n", currentDial());
-	}
+	/* Display commands. */
+	setCur(0,8);
+	/* XXX XXX: Does not work with currentDial()! */
+	printf("Current Position: %u\t\t\n", getABSposition());
+	printf("Q/W        10 ticks CCW/CW\t\t\t\n");
+	printf("A/S         5 ticks CCW/CW\t\t\t\n");
+	printf("Z/X         1 ticks CCW/CW\t\t\t\n");
+	printf("C/V        40 ticks CCW/CW\t\t\t\n");
+	printf("B      fire solenoid\t\t\t\n");
 }
 
 void printMenu() {
 	setCur(0,8);
 	/* Display commands. */
-	printf("1        Machine Setup Data\n");
-	printf("2        Automatic Operation\n");
-	printf("3        Manual Operation\n");
+	printf("1        Machine Setup Data\t\t\t\n");
+	printf("2        Automatic Operation\t\t\t\n");
+	printf("3        Manual Operation\t\t\t\n");
+	clrSCR(MAXL);
 }
 /***** END of MESSAGE AND CONSTANTS DEFINITION ***********/
 
@@ -324,13 +320,9 @@ void MSSidle(char selection) {
 			/* MOS */
 			OMD = 4;
 			break;
-		case 0x03:	// ^C.
+		case '0':
 			/* Exit. */
 			OMD = 5;
-			/* Stop the timer. */
-			IE = 0;
-			TR1 = 0;
-			LEDs = 0;
 			machineMessage = "Exit Command Accepted";
 			break;
 		default:
@@ -341,10 +333,10 @@ void MSSidle(char selection) {
 void MSSMSD(char selection) {
 	/* Edit or quit. */
 	switch (selection) {
-		case 0x0D:	// CR.
+		case 'E':
 			submode = 1;
 			break;
-		case 0x03:	// ^C.
+		case '0':
 			/* Return to menu. */
 			encoderref = getABSposition();
 			OMD = 0;
@@ -360,10 +352,10 @@ void MSSACSidle(char selection) {
 		case 'r':
 			submode = 0;
 			break;
-		case 0x0D:	// CR.
+		case 'e':	// CR.
 			submode++;
 			break;
-		case 0x03:	// ^C.
+		case '0':
 			OMD = 0;
 			break;
 		default:
@@ -374,43 +366,43 @@ void MSSACSidle(char selection) {
 void MSSMOS(char selection) {
 	/* Rotate, unlock, or quit. */
 	switch (selection) {
-		case 'q':
+		case 'Q':
 			/* 10 CCW */
 			submode = 1;
 			break;
-		case 'w':
+		case 'W':
 			/* 10 CW */
 			submode = 2;
 			break;
-		case 'a':
+		case 'A':
 			/* 5 CCW */
 			submode = 3;
 			break;
-		case 's':
+		case 'S':
 			/* 5 CW */
 			submode = 4;
 			break;
-		case 'z':
+		case 'Z':
 			/* 1 CCW */
 			submode = 5;
 			break;
-		case 'x':
+		case 'X':
 			/* 1 CW */
 			submode = 6;
 			break;
-		case 0x08:	// BS.
+		case 'C':
 			/* 40 CCW */
 			submode = 7;
 			break;
-		case 0x0D:	// CR.
+		case 'V':
 			/* 40 CW */
 			submode = 8;
 			break;
-		case 0x20:	// Space.
+		case 'B':
 			/* Solenoid */
 			submode = 9;
 			break;
-		case 0x03:	// ^C.
+		case '0':
 			OMD = 0;
 			break;
 		default:
@@ -419,7 +411,7 @@ void MSSMOS(char selection) {
 	}
 }
 
-void MSSfunction(unsigned char OMD) {
+void MSSfunction() {
 	char selection;
 
 	/* Skip on first run. */
@@ -455,6 +447,7 @@ void MCSfunction() {
 	if (OMD == 0) {
 		/* Reset submode. */
 		submode = 0;
+		machineMessage = "System Ready";
 		/* Release solenoid. */
 		P1 = 0x00;
 	} else if (OMD == 1) {
@@ -473,37 +466,37 @@ void MOSfunction() {
 	switch (submode) {
 		case 1:
 			/* 10 CCW */
-			moveServo(10, 1);
+			moveServo(10, 0);
 			break;
 		case 2:
 			/* 10 CW */
-			moveServo(10, 0);
+			moveServo(10, 1);
 			break;
 		case 3:
 			/* 5 CCW */
-			moveServo(5, 1);
+			moveServo(5, 0);
 			break;
 		case 4:
 			/* 5 CW */
-			moveServo(5, 0);
+			moveServo(5, 1);
 			break;
 		case 5:
 			/* 1 CCW */
-			moveServo(1, 1);
+			moveServo(1, 0);
 			break;
 		case 6:
 			/* 1 CW */
 			moveServo(1, 1);
 			break;
-		case 7:	// BS.
+		case 7:
 			/* 40 CCW */
-			moveServo(40, 1);
-			break;
-		case 8:	// CR.
-			/* 40 CW */
 			moveServo(40, 0);
 			break;
-		case 9:	// Space.
+		case 8:
+			/* 40 CW */
+			moveServo(40, 1);
+			break;
+		case 9:
 			/* Solenoid */
 			P1 = 0xFF;
 			break;
@@ -515,82 +508,8 @@ void MOSfunction() {
 
 /***** START OF ACS **************************************/
 void ACSfunction() {
-	char userinput[5];
-	unsigned char parsed;
-	unsigned char Number1, Number2, Number3;
-	unsigned char ticks1, ticks2, ticks3;
-	
 	machineMessage = "Automatic Mode Accepted";
-	
-	switch (OMD) {
-		/* ACS Idle Mode */
-		case 2: 
-			if(submode == 0) {
-				/* Wait for user to press enter to change 1st */
-			} else if(submode == 1) {
-				/* Receive 1st user input */
-				gets(userinput);
-				parsed = atoi(userinput);
-				checkInput(parsed, &Number1);
-			} else if(submode == 2) {
-				/* Wait for user to press enter to change 2nd */
-			} else if(submode == 3) {
-				/* Receive 2nd user input */
-				gets(userinput);
-				parsed = atoi(userinput);
-				checkInput(parsed, &Number2);
-			} else if(submode == 4) {
-				/* Wait for user to press enter to change 3rd */
-			} else if(submode == 5) {
-				/* Receive 3rd user input */
-				gets(userinput);
-				parsed = atoi(userinput);
-				checkInput(parsed, &Number3);
-			} else if(submode == 6) {
-				/* Wait for user to press enter, then Start RTS */
-				/* Calculations Here? */
-				/* Determine ticks to move to get to 1st Number */
-				if(initP > Number1)
-				{
-					ticks1 = 80+(40-initP)+Number1;
-				} else if( initP < Number1) {
-					ticks1 = 80+(Number1-initP);
-				}
-				/* Determine ticks to move to get to 2nd Number */
-				if(Number1 > Number2)
-				{
-					ticks2 = 40+(40-Number1)+Number2;
-				} else if( Number1 < Number2) {
-					ticks2 = 40+(Number2-Number1);
-				}
-				/* Determine ticks to move to get to 3rd Number */
-				if(Number3 > Number2)
-				{
-					ticks3 = (40-Number2)+Number3;
-				} else if(Number3 < Number2) {
-					ticks3 = (Number3-Number2);
-				}
-			} else if(submode == 7) {
-				/* Move to Active Mode */
-				OMD = 3;
-				submode = 7;
-			}
-			break;
-		/* ACS Active Mode */
-		case 3: 
-			if(submode == 0) { //Moving to 1st			
-				moveServo(ticks1,1);
-			} else if(submode == 1) { //Moving to 2nd
-				moveServo(ticks1,0);
-			} else if(submode == 2) { //Moving to 2nd
-				moveServo(ticks3,1);
-			}
-			break;
-		default:
-			break;
-	
-	}
-} 
+}
 /***** END OF ACS ****************************************/
 
 
@@ -606,6 +525,8 @@ void MSDfunction() {
 		submode++;
 	} else if (submode == 2) {
 		/* Receive user input, parse, and check. */
+		/* XXX: Why does gets go to weird position? */
+		setCur(20,9);
 		gets(userinput);
 		/* Attempts to cast no matter what:
 		 * there is no detection of obviously erroneous
@@ -643,30 +564,30 @@ void OCSfunction() {
 		FFRA = 0;
 	} else {
 		setCur(0,4);
-		printf("Current Mode: %s\t\t\n", getCurrentMode());
-		printf("%s\t\t\n", machineMessage);
+		printf("Current Mode: %s\t\t\t\n", getCurrentMode());
+		printf("%s\t\t\t\t\t\t\n", machineMessage);
 		/* Print mode appropriate HMI. */
 		if (OMD == 0) {
 			/* Display quitting information and menu. */
-			printf("Press ^C to Exit\t\t\n");
+			printf("Press 0 to Exit APOC System\t\t\t\n");
 			setCur(0,8);
-			clrSCR(MAXL);
+			//clrSCR(MAXL);
 			printMenu();
 		} else {
 			/* Display escape information and HMI. */
-			printf("Press ^C to Return to Menu\t\t\n");
+			printf("Press 0 to Return to Menu\t\t\t\n");
 			switch (OMD) {
 				case 1:
 					clrSCR(MAXL);
-					printMSD(submode);
+					printMSD();
 					break;
 				case 2:
 					clrSCR(MAXL);
-					printACSidle(submode);
+					printACSidle();
 					break;
 				case 3:
 					clrSCR(MAXL);
-					printACSactive(submode);
+					printACSactive();
 					break;
 				case 4:
 					clrSCR(MAXL);
@@ -676,6 +597,11 @@ void OCSfunction() {
 					break;
 			}
 		}
+	}
+	/* Wait for user to acknowledge if necessary. */
+	if (wait) {
+		while (!key());
+		wait = 0;
 	}
 }
 /***** END OF OCS ****************************************/
@@ -688,7 +614,7 @@ void main() {
 		/* Run diagnostics. */
 		if (diagnostics()) {
 			/* If success, continue. */
-			MSSfunction(OMD);
+			MSSfunction();
 			MCSfunction();
 			OCSfunction();
 		} else {
