@@ -60,6 +60,10 @@ unsigned char OMD, ERR1, FFRA;
 /* Timer values. */
 unsigned char MD, MH, MM, MS;
 
+/* Combination values. */
+unsigned char Number1, Number2, Number3;
+unsigned char ticks1, ticks2, ticks3;
+
 /* Servo and dial parameters. */
 unsigned int feedRate;
 unsigned int encoderResolution;
@@ -211,6 +215,8 @@ void printACSidle() {
 			printf("Enter 1st Dial Value: ");
 			break;
 		case 2:
+			clrLine();
+			printf("1st Dial: %u\n", Number1);
 			setCur(0,10);
 			printf("Press Enter to Change 2nd Number\t\t\t\n");
 			break;
@@ -220,6 +226,8 @@ void printACSidle() {
 			printf("Enter 2nd Dial Value: ");
 			break;
 		case 4:
+			clrLine();
+			printf("2nd Dial: %u\n", Number2);
 			setCur(0,11);
 			printf("Press Enter to Change 3rd Number\t\t\t\n");
 			break;
@@ -229,8 +237,12 @@ void printACSidle() {
 			printf("Enter 3rd Dial Value: ");
 			break;
 		case 6:
+			clrLine();
+			printf("3rd Dial: %u\n", Number3);
 			setCur(0,12);
 			printf("Press Enter to Start RTS\t\t\t\n");
+			break;
+		case 7:
 			break;
 		default:
 			break;
@@ -243,9 +255,9 @@ void printACSactive() {
 	/* Update completion status. */
 	switch (submode) {
 		case 0:
-			printf("1st Dial: XXX\n");
-			printf("2nd Dial: XXX\n");
-			printf("3rd Dial: XXX\n");
+			printf("1st Dial: %u\n", Number1);
+			printf("2nd Dial: %u\n", Number2);
+			printf("3rd Dial: %u\n", Number3);
 			break;
 		case 1:
 			setCur(13,9);
@@ -508,8 +520,84 @@ void MOSfunction() {
 
 /***** START OF ACS **************************************/
 void ACSfunction() {
+	char userinput[5];
+	unsigned char parsed;
+	
 	machineMessage = "Automatic Mode Accepted";
-}
+	
+	switch (OMD) {
+		/* ACS Idle Mode */
+		case 2: 
+			if(submode == 0) {
+				/* Wait for user to press enter to change 1st */
+			} else if (submode == 1) {
+				/* Receive 1st user input */
+				gets(userinput);
+				parsed = atoi(userinput);
+				checkInput(parsed, &Number1);
+			} else if (submode == 2) {
+				/* Wait for user to press enter to change 2nd */
+			} else if (submode == 3) {
+				/* Receive 2nd user input */
+				gets(userinput);
+				parsed = atoi(userinput);
+				checkInput(parsed, &Number2);
+			} else if (submode == 4) {
+				/* Wait for user to press enter to change 3rd */
+			} else if (submode == 5) {
+				/* Receive 3rd user input */
+				gets(userinput);
+				parsed = atoi(userinput);
+				checkInput(parsed, &Number3);
+			} else if (submode == 6) {
+				/* Wait for user to press enter, then Start RTS */
+				/* Calculations Here? */
+				/* Determine ticks to move to get to 1st Number */
+				if (initp > Number1)
+				{
+					ticks1 = 80+(initp-Number1);
+				} else if (initp < Number1) {
+					ticks1 = 80+initp+(40-Number1);
+				}
+				/* Determine ticks to move to get to 2nd Number */
+				if (Number1 > Number2)
+				{
+					ticks2 = 40+(40-(Number2-Number1));
+				} else if ( Number1 < Number2) {
+					ticks2 = 40+(Number2-Number1);
+				}
+				/* Determine ticks to move to get to 3rd Number */
+				if (Number2 > Number3)
+				{
+					ticks3 = Number2-Number3
+				} else if (Number2 < Number3) {
+					ticks3 =  40-(Number3-Number2);;
+				} 
+			} else if (submode == 7) {
+				/* Move to Active Mode */
+				OMD = 3;
+				submode = 0;
+			}
+			break;
+		/* ACS Active Mode */
+		case 3: 
+			/* XXX: Put timing clear here. */
+			if (submode == 0) {
+				/* Move to Number1. */
+				moveServo(ticks1, 1);
+			} else if (submode == 1) {
+				/* Move to Number2. */
+				moveServo(ticks2, 0);
+			} else if (submode == 2) {
+				/* Move to Number3. */
+				moveServo(ticks3, 1);
+			}
+			/* XXX: Put timing print here. */
+			break;
+		default:
+			break;
+	}
+} 
 /***** END OF ACS ****************************************/
 
 
