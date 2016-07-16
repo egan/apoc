@@ -84,7 +84,7 @@ __data __at (0x56) unsigned long distance;
  */
 __data __at (0x21) unsigned char motionRegister;
 /* TIM counter: 1 tick = 10ms. */
-__data __at (0x23) unsigned char counter;
+__data __at (0x23) unsigned int counter;
 
 /* Check user input: if valid store in &setting, otherwise throw error. */
 void checkInput(unsigned char input, unsigned char *setting) {
@@ -265,7 +265,7 @@ void printACSactive() {
 			setCur(13,11);
 			printf("(Completed)\n");
 			setCur(0,8);
-			printf("Elapsed Time: %d\n", time);
+			printf("Elapsed Time: %ums\n", time);
 			break;
 		default:
 			break;
@@ -336,7 +336,7 @@ void MSSidle(char selection) {
 			break;
 		default:
 			break;
-	}	
+	}
 }
 
 void MSSMSD(char selection) {
@@ -484,7 +484,7 @@ void MCSfunction() {
 /***** END OF MCS ****************************************/
 
 /***** START OF MOS **************************************/
-void MOSfunction() {	
+void MOSfunction() {
 	machineMessage = "Manual Mode Accepted";
 	switch (submode) {
 		case 1:
@@ -533,12 +533,12 @@ void MOSfunction() {
 void ACSfunction() {
 	char userinput[5];
 	unsigned char parsed;
-	
+
 	machineMessage = "Automatic Mode Accepted";
-	
+
 	switch (OMD) {
 		/* ACS Idle Mode */
-		case 2: 
+		case 2:
 			if(submode == 0) {
 				/* Wait for user to press enter to change 1st */
 			} else if (submode == 1) {
@@ -580,7 +580,7 @@ void ACSfunction() {
 					ticks3 = Number2-Number3;
 				} else if (Number2 <= Number3) {
 					ticks3 =  40-(Number3-Number2);
-				} 
+				}
 			} else if (submode == 7) {
 				/* Move to Active Mode */
 				OMD = 3;
@@ -588,7 +588,7 @@ void ACSfunction() {
 			}
 			break;
 		/* ACS Active Mode */
-		case 3: 
+		case 3:
 			if (submode == 0) {
 				/* Clear timer. */
 				counter = 0;
@@ -612,7 +612,7 @@ void ACSfunction() {
 		default:
 			break;
 	}
-} 
+}
 /***** END OF ACS ****************************************/
 
 
