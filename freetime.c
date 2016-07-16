@@ -11,6 +11,8 @@
 #define MAXL 6
 #define REVPULSES 8192
 #define DIALTICKS 40
+#define SAMPLINGTIME 10	// ms
+#define FEEDRATE = 50	// RPM
 
 /***** FUNCTION PROTOTYPES *******************************/
 void OCSfunction();
@@ -188,8 +190,6 @@ unsigned char OMD, ERR1, FFRA;
 /* Timer values. */
 unsigned char MD, MH, MM, MS;
 
-/* UD counter from TIM. */
-__data __at (0x21) unsigned volatile char counter;
 /* ASC servo speed. XXX: Units/desired value? */
 __data __at (0x52) unsigned int servospeed;
 /* ASC relative distance (pulses). */
@@ -237,12 +237,19 @@ unsigned int ticks2pulses(unsigned char ticks) {
 	return pulses;
 }
 
+/* Move the servo a certain number of ticks in direction. */
+void moveServo(unsigned char ticks, char direction) {
+	servopulses = ticks2pulses(ticks);
+	motionRegister = 0x01+0x10*direction;
+}
+
 void INZfunction() {
 	/* Print output to the MPS console. */
 	printMode = 0;
 	/* Operation Mode is Idle, default submode */
 	OMD = 0;
 	submode = 0;
+	machineMessage = "Ready";
 	/* Level 1 error flag for the system. */
 	ERR1 = 0;
 	/* Set First Run Flag, MSD defaults. */
@@ -251,13 +258,17 @@ void INZfunction() {
 	initp = 0;
 	/* Initialize the time variables. */
 	MD = MH = MM = MS = 0;
+	clrUDCounter();
 	/* Initialize encoder reference. */
 	encoderref = getABSposition();
 
-	/* Run the TIM RTS. */
-	__asm
-		lcall 0x9600;
-	__endasm;
+	/* Set desired servo speed. */
+	motionRegister = 0x00;
+	servospeed = (FEEDRATE*SAMPLINGTIME*(float)REVPULSES)/60000+0.5;
+
+	/* Solenoid port. */
+	P1 = 0x00;
+
 	/* Run the ACS RTS. */
 	__asm
 		lcall 0x9F00;
@@ -346,30 +357,50 @@ void MSSACSidle(char selection) {
 	}
 }
 
-/* XXX: Setup key commands. */
 void MSSMOS(char selection) {
 	/* Rotate, unlock, or quit. */
 	switch (selection) {
 		case 'q':
+			/* 10 CCW */
+			submode = 1;
 			break;
 		case 'w':
+			/* 10 CW */
+			submode = 2;
 			break;
 		case 'a':
+			/* 5 CCW */
+			submode = 3;
 			break;
 		case 's':
+			/* 5 CW */
+			submode = 4;
 			break;
 		case 'z':
+			/* 1 CCW */
+			submode = 5;
 			break;
 		case 'x':
+			/* 1 CW */
+			submode = 6;
 			break;
 		case 0x08:	// BS.
+			/* 40 CCW */
+			submode = 7;
 			break;
 		case 0x0D:	// CR.
+			/* 40 CW */
+			submode = 8;
 			break;
 		case 0x20:	// Space.
+			/* Solenoid */
+			submode = 9;
 			break;
 		case 0x03:	// ^C.
 			OMD = 0;
+			break;
+		default:
+			submode = 0;
 			break;
 	}
 }
@@ -410,6 +441,8 @@ void MCSfunction() {
 	if (OMD == 0) {
 		/* Reset submode. */
 		submode = 0;
+		/* Release solenoid. */
+		P1 = 0x00;
 	} else if (OMD == 1) {
 		MSDfunction();
 	} else if (OMD == 2 || OMD == 3) {
@@ -423,6 +456,46 @@ void MCSfunction() {
 /***** START OF MOS **************************************/
 void MOSfunction() {	
 	machineMessage = "Manual Mode Accepted";
+	switch (submode) {
+		case 1:
+			/* 10 CCW */
+			moveServo(10, 1);
+			break;
+		case 2:
+			/* 10 CW */
+			moveServo(10, 0);
+			break;
+		case 3:
+			/* 5 CCW */
+			moveServo(5, 1);
+			break;
+		case 4:
+			/* 5 CW */
+			moveServo(5, 0);
+			break;
+		case 5:
+			/* 1 CCW */
+			moveServo(1, 1);
+			break;
+		case 6:
+			/* 1 CW */
+			moveServo(1, 1);
+			break;
+		case 7:	// BS.
+			/* 40 CCW */
+			moveServo(40, 1);
+			break;
+		case 8:	// CR.
+			/* 40 CW */
+			moveServo(40, 0);
+			break;
+		case 9:	// Space.
+			/* Solenoid */
+			P1 = 0xFF;
+			break;
+		default:
+			break;
+	}
 }
 /***** END OF MOS ****************************************/
 
