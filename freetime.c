@@ -114,18 +114,10 @@ int getABSposition() {
 /* Function to return current dial position. */
 /* XXX: This does not currently work. */
 unsigned char currentDial() {
-	int absPosition = getABSposition(); //where RTS is at now
-	int relPosition;
+	int absPosition = getABSposition();
+	int relPosition = absPosition - encoderref;
 	unsigned char dial;
-	int relTicks;
-	if(absPosition >= encoderref){ //if RTS is at more pulses than starting pulses
-		relPosition = absPosition - encoderref; // pulses it moved
-	} else if(absPosition < encoderref){ //if RTS is at less pulses than starting pulses
-		relPosition = 65535 - (encoderref - absPosition); // pulses it moved
-	}
-	relTicks = (float)relPosition*(float)(dialPositions/encoderResolution);
-
-	dial = (initp + (int)relTicks) % dialPositions;
+	dial = (initp + relPosition*dialPositions/encoderResolution) % dialPositions;
 	return dial;
 }
 
@@ -292,15 +284,12 @@ void printMOS() {
 	/* Display commands. */
 	setCur(0,9);
 	/* XXX XXX: Does not work with currentDial()! */
-	printf("Current Position: %u\t\t\n", currentDial());
+	printf("Current Position: %u\t\t\n", getABSposition());
 	printf("Q/W        10 ticks CCW/CW\t\t\t\n");
 	printf("A/S         5 ticks CCW/CW\t\t\t\n");
 	printf("Z/X         1 ticks CCW/CW\t\t\t\n");
 	printf("C/V        40 ticks CCW/CW\t\t\t\n");
 	printf("B      fire solenoid\t\t\t\n");
-	setCur(0,20);
-	printf("Current Position: %d\t\t\n", currentDial());
-	printf("Current Position: %d\t\t\n", getABSposition());
 }
 
 void printMenu() {
@@ -589,7 +578,7 @@ void ACSfunction() {
 				}
 				/* Determine ticks to move to get to 2nd Number */
 				if (Number1 > Number2) {
-					ticks2 = 40+(40-(Number1-Number2));
+					ticks2 = 40+(40-(Number2-Number1));
 				} else if (Number1 <= Number2) {
 					ticks2 = 40+(Number2-Number1);
 				}
